@@ -1,0 +1,105 @@
+XMLTV 0.5.31
+
+Gather television listings, process them and organize your viewing.
+XMLTV is a file format for storing TV listings, defined in xmltv.dtd.
+Then there are several tools to produce and process these listings.
+
+Please see doc/QuickStart for documentation on what each program does,
+and xmltv.dtd for documentation on the file format.
+
+* Changes in this release
+
+Summer time changeover fixes; in particular avoid errors about
+'impossible dates' (those during the 1 hour summer time changover) by
+assuming winter time for such dates.
+
+New U.S./Canadian grabber (tv_grab_na_dd) using Zap2it's Data Direct
+Service.  Instructions for signing up is in the man page and --config 
+option.  Please migrate off (tv_grab_na), it will be dropped from a future
+distribution.  Zap2it has made this new  method available to reduce their
+server load.  The new method is much, much faster and includes
+more detail.  If there are any issues preventing migration, please raise
+them on the mailing lists or as a feature request.
+
+XML::Twig 3.10 is now required and if you want to use tv_grab_na_dd
+you'll need SOAP::Lite as well.
+
+Some improvements to tv_grab_de_tvtoday, tv_grab_se, and
+tv_grab_uk_rt; small fixes to tv_check.  Fixed test suite on Cygwin.
+
+* Installation
+
+% perl Makefile.PL
+% make
+% make test
+% make install
+
+To install in a custom directory, replace the first line with
+something like
+
+% perl Makefile.PL PREFIX=/wherever/
+
+The system requirements are perl 5.6 or later, and a few Perl modules.
+You will be asked about some optional components; if you choose not to
+install them then there are fewer dependencies.  The full list of
+needed modules is:
+
+XML::Parser 2.34
+XML::Twig 3.10
+XML::Writer 0.4.6
+Date::Manip 5.42a 
+LWP 5.65
+Memoize (included with perl 5.8 and later)
+Storable (included with perl 5.8 and later)
+
+HTML::TreeBuilder       (for many of the grabbers)
+HTML::Parser 3.34       (for some of the grabbers)
+Tk::TableMatrix         (if you want to run tv_check)
+CGI                     (if you want to run tv_pick_cgi)
+Text::Kakasi            (if you want to run tv_grab_jp)
+XML::LibXML             (if you want to run tv_grab_se)
+SOAP::Lite              (if you want to run tv_grab_na_dd)
+
+Where a version number is given any later version also ought to work.
+You may have difficulty with the XML modules on perl 5.8.0 - if so
+send mail to the xmltv-users list.  Other perl versions should be OK.
+
+The following modules are recommended, but the software still works
+without them:
+
+Term::ProgressBar                (displays pretty progress meters)
+PerlIO::gzip (for perl 5.8+)     (makes tv_imdb a bit faster)
+Lingua::Preferred 0.2.4          (helps with multilingual listings)
+Unicode::String                  (non-ASCII chars in LaTeX output)
+Lingua::EN::Numbers::Ordinate    (not really needed, to be honest)
+
+And the Log::TraceMessages module is useful for debugging, but not
+needed for normal use.
+
+All of these can be installed with tarballs downloaded from CPAN or
+(hopefully) using the CPAN shell program: 'perl -MCPAN -e shell', then
+'install XML::Twig' and so on.  But you may find it easier to search
+for packaged versions from your OS vendor or others - places which
+distribute a packaged version of xmltv will often provide the modules
+it needs too.
+
+* Author and copying
+
+This is free software distributed under the GPL, see COPYING.  But if
+you would like to use the code under some other conditions, please do
+ask.  There are many who have contributed code, they are credited in
+individual source files.
+
+There is a web page at
+<http://membled.com/work/apps/xmltv/> and a Sourceforge
+project 'XMLTV'.  There are some mailing lists:
+
+    xmltv-announce@lists.sourceforge.net
+    xmltv-users@lists.sourceforge.net
+    xmltv-devel@lists.sourceforge.net
+
+You ought to subscribe to the announce list at least.  Contact the
+users list with most problems.
+
+-- Ed Avis, ed@membled.com, 2004-03-21
+$Id: README,v 1.104 2004/03/21 14:51:33 epaepa Exp $

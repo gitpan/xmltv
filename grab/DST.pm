@@ -1,18 +1,25 @@
-# $Id: Europe_TZ.pm,v 1.17 2004/03/19 13:14:42 epaepa Exp $
+# $Id: DST.pm,v 1.3 2004/04/13 22:20:55 epaepa Exp $
 #
 # Timezone stuff, including routines to guess timezones in European
-# countries that have daylight saving time.
+# (and other) countries that have daylight saving time.
 #
 # Warning: this might break if Date::Manip is initialized to some
 # timezone other than UTC: best to call Date_Init('UTC') first.
 #
 
-package XMLTV::Europe_TZ;
+package XMLTV::DST;
 use strict;
 use Carp qw(croak);
 use Date::Manip; # no Date_Init(), that can be done by the app
 use XMLTV::TZ qw(gettz tz_to_num);
 use XMLTV::Date;
+
+# Three modes:
+#   eur (default): Europe and elsewhere
+#   na:            US (most states) and Canada
+#   none:          places that don't observe DST
+#
+our $Mode = 'eur';
 
 # Use Log::TraceMessages if installed.
 BEGIN {
@@ -33,7 +40,7 @@ BEGIN {
 #
 eval { require Memoize };
 unless ($@) {
-    foreach (qw(parse_eur_date date_to_eur dst_dates
+    foreach (qw(parse_local_date date_to_local dst_dates
 		parse_date UnixDate DateCalc Date_Cmp
 		gettz)) {
 	Memoize::memoize($_) or die "cannot memoize $_: $!";
@@ -41,9 +48,9 @@ unless ($@) {
 }
 
 use base 'Exporter';
-our @EXPORT = qw(parse_eur_date date_to_eur utc_offset);
+our @EXPORT = qw(parse_local_date date_to_local utc_offset);
 
-# parse_eur_date()
+# parse_local_date()
 #
 # Wrapper for parse_date() that tries to guess what timezone a date is
 # in.  You must pass in the 'base' timezone as the second argument:
@@ -66,10 +73,10 @@ our @EXPORT = qw(parse_eur_date date_to_eur utc_offset);
 #
 # Returns: parsed date.  Throws exception if error.
 #
-sub parse_eur_date($$) {
+sub parse_local_date($$) {
 #    local $Log::TraceMessages::On = 1;
     my ($date, $base) = @_;
-    croak 'usage: parse_eur_date(unparsed date, base timezone)'
+    croak 'usage: parse_local_date(unparsed date, base timezone)'
       if @_ != 2 or not defined $date or not defined $base;
     my $winter_tz = tz_to_num($base);
     my $summer_tz = sprintf('%+05d', $winter_tz + 100); # 'one hour'
@@ -78,11 +85,15 @@ sub parse_eur_date($$) {
 #    t "got timezone $got_tz from date $date";
     if (defined $got_tz) {
 	# Need to work out whether the timezone is one of the two
-	# allowable values.
+	# allowable values (or UTC, that's always okay).
+	#
+	# I don't remember the reason for this check... perhaps it is
+	# just paranoia.
 	#
 	my $got_tz_num = tz_to_num($got_tz);
-	croak "got timezone $got_tz from $date, but it's not $winter_tz or $summer_tz\n"
-	    if $got_tz_num ne $winter_tz and $got_tz_num ne $summer_tz;
+	croak "got timezone $got_tz from $date, but it's not $winter_tz, $summer_tz or UTC\n"
+	    if $got_tz_num ne $winter_tz and $got_tz_num ne $summer_tz
+	      and $got_tz_num ne '+0000';
 
 	# One thing we don't check is that the explicit timezone makes
 	# sense for this time of year.  So you can specify summer
@@ -104,7 +115,18 @@ sub parse_eur_date($$) {
       if not defined $year;
 
     # Start and end dates of DST in local winter time.
-    my ($start_dst, $end_dst) = @{dst_dates($year)};
+    my ($start_dst, $end_dst);
+    if ($Mode eq 'eur') {
+	($start_dst, $end_dst) = @{dst_dates($year)};
+    }
+    elsif ($Mode eq 'na') {
+	($start_dst, $end_dst) = @{dst_dates_na($year, $winter_tz)};
+    }
+    elsif ($Mode eq 'none') {
+	return Date_ConvTZ($dp, $winter_tz, 'UTC');
+    }
+    else { die }
+
     foreach ($start_dst, $end_dst) {
 	$_ = Date_ConvTZ($_, 'UTC', $winter_tz);
     }
@@ -165,7 +187,7 @@ sub parse_eur_date($$) {
 }
 
 
-# date_to_eur()
+# date_to_local()
 #
 # Take a date in UTC and convert it to one of two timezones, depending
 # on when during the year it is.
@@ -178,13 +200,13 @@ sub parse_eur_date($$) {
 #   new date
 #   timezone of new date
 #
-# For example, date_to_eur with a date of 13:00 on June 10th 2000 and
+# For example, date_to_local with a date of 13:00 on June 10th 2000 and
 # a base timezone of UTC would be be 14:00 +0100 on the same day.  The
 # input and output date are both in Date::Manip internal format.
 #
-sub date_to_eur( $$ ) {
+sub date_to_local( $$ ) {
     my ($d, $base_tz) = @_;
-    croak 'date_to_eur() expects a Date::Manip object as first argument'
+    croak 'date_to_local() expects a Date::Manip object as first argument'
       if (not defined $d) or ($d !~ /\S/);
 
     my $year = UnixDate($d, '%Y');
@@ -193,7 +215,17 @@ sub date_to_eur( $$ ) {
     }
 
     # Find the start and end dates of summer time.
-    my ($start_dst, $end_dst) = @{dst_dates($year)};
+    my ($start_dst, $end_dst);
+    if ($Mode eq 'eur') {
+	($start_dst, $end_dst) = @{dst_dates($year)};
+    }
+    elsif ($Mode eq 'na') {
+	($start_dst, $end_dst) = @{dst_dates_na($year, $base_tz)};
+    }
+    elsif ($Mode eq 'none') {
+	return [ Date_ConvTZ($d, 'UTC', $base_tz), $base_tz ];
+    }
+    else { die }
 
     my $use_tz;
     if (Date_Cmp($d, $start_dst) < 0) {
@@ -219,15 +251,15 @@ sub date_to_eur( $$ ) {
 # (preferably YYYYMMDDhhmmss) and a 'base' timezone (eg '+0100'),
 # return this time string with UTC offset appended. The 'base'
 # timezone should be the non-DST timezone for the country ('winter
-# time'). This function figures out (through parse_eur_date() and
-# date_to_eur()) whether DST is in effect for the specified date, and
+# time'). This function figures out (through parse_local_date() and
+# date_to_local()) whether DST is in effect for the specified date, and
 # adjusts the UTC offset appropriately.
 #
 sub utc_offset( $$ ) {
     my ($indate, $basetz) = @_;
     croak "empty date" if not defined $indate;
     croak "empty base TZ" if not defined $basetz;
-    my $d = date_to_eur(parse_eur_date($indate, $basetz), $basetz);
+    my $d = date_to_local(parse_local_date($indate, $basetz), $basetz);
     return UnixDate($d->[0],"%Y%m%d%H%M%S") . " " . $d->[1];
 }
 
@@ -249,7 +281,7 @@ sub utc_offset( $$ ) {
 #   start time and date of summer time (in UTC)
 #   end time and date of summer time (in UTC)
 #
-sub dst_dates($) {
+sub dst_dates( $ ) {
     die "usage: dst_dates(year), got args: @_" if @_ != 1;
     my $year = shift;
     die "don't know about DST before 1998" if $year < 1998;
@@ -271,6 +303,43 @@ sub dst_dates($) {
 
     return [ $start_dst, $end_dst ];
 }
+
+sub dst_dates_na( $$ ) {
+    die "usage: dst_dates(year, winter_tz), got args: @_" if @_ != 2;
+    my ($year, $winter_tz) = @_;
+    die "don't know about DST before 1988" if $year < 1988;
+    $winter_tz =~ /^\s*-\s*(\d\d)(?:00)?\s*$/
+      or die "bad North American winter time zone $winter_tz";
+    my $hours = $1;
+
+    my ($start_dst, $end_dst);
+    foreach (1 .. 31) {
+	if (not defined $start_dst and $_ < 31) {
+	    my $date = "$year-04-$_";
+	    my $day = UnixDate(parse_date($date), '%A');
+	    if ($day =~ /Sunday/) {
+		# First Sunday in April.  DST starts at 02:00 local
+		# standard time.
+		#
+		$start_dst = Date_ConvTZ(parse_date("$date 02:00"),
+					 "-$winter_tz", 'UTC');
+	    }
+	}
+
+	my $date = "$year-10-$_";
+	my $day = UnixDate(parse_date($date), '%A');
+	next unless $day =~ /Sunday/;
+	# A Sunday in October (and the last one we see will be the
+	# last Sunday).  DST ends at 01:00 local standard time.
+	#
+	$end_dst = Date_ConvTZ(parse_date("$date 01:00"),
+			       "-$winter_tz", 'UTC');
+    }
+    die if not defined $start_dst or not defined $end_dst;
+
+    return [ $start_dst, $end_dst ];
+}
+
 
 
 1;

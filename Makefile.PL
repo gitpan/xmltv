@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-# $Id: Makefile.PL,v 1.193 2004/03/21 14:51:33 epaepa Exp $
+# $Id: Makefile.PL,v 1.205 2004/05/08 10:17:11 epaepa Exp $
 
 use ExtUtils::MakeMaker;
 use Config;
@@ -46,10 +46,14 @@ END
 #
 my $opt_nodeps = 0;
 my $opt_yes = 0;
-GetOptions('nodeps' => \$opt_nodeps, 'yes' => \$opt_yes);
+my $opt_components;
+GetOptions(nodeps         => \$opt_nodeps,
+	   yes            => \$opt_yes,
+	   'components=s' => \$opt_components,
+	  );
 
 our $VERSION;
-$VERSION = '0.5.31';
+$VERSION = '0.5.33';
 
 # Fragment of Makefile text to give the directory where files should
 # be installed.  The extra '.' in the middle of the path is to avoid
@@ -116,7 +120,7 @@ my %pm
      'filter/Grep.pm'             => '$(INST_LIBDIR)/XMLTV/Grep.pm',
      'grab/Memoize.pm'            => '$(INST_LIBDIR)/XMLTV/Memoize.pm',
      'grab/Grab_XML.pm'           => '$(INST_LIBDIR)/XMLTV/Grab_XML.pm',
-     'grab/Europe_TZ.pm'          => '$(INST_LIBDIR)/XMLTV/Europe_TZ.pm',
+     'grab/DST.pm'                => '$(INST_LIBDIR)/XMLTV/DST.pm',
      'grab/Config_file.pm'        => '$(INST_LIBDIR)/XMLTV/Config_file.pm',
      'grab/Get_nice.pm'           => '$(INST_LIBDIR)/XMLTV/Get_nice.pm',
      'grab/Mode.pm'               => '$(INST_LIBDIR)/XMLTV/Mode.pm',
@@ -233,17 +237,32 @@ my @opt_components
        grab_need_share => [ 'it' ],
      },
 
-     { name => 'tv_grab_na',
-       blurb => 'Grabber for North America',
-       exes => [ 'grab/na/tv_grab_na' ],
-       pm => { 'grab/na/ZapListings.pm' =>
-	       '$(INST_LIBDIR)/XMLTV/ZapListings.pm' },
-       prereqs => { 'HTML::Parser' => 3.34 } },
+#     { name => 'tv_grab_na',
+#       blurb => 'Grabber for North America',
+#       exes => [ 'grab/na/tv_grab_na' ],
+#       pm => { 'grab/na/ZapListings.pm' => '$(INST_LIBDIR)/XMLTV/ZapListings.pm' },
+#       prereqs => { 'HTML::Parser' => 3.34 } },
 
-     { name => 'tv_grab_na_dd',
+     { name     => 'tv_grab_na_dd',
        blurb => 'Grabber for North America using DataDirect',
-       exes => [ 'grab/na_dd/tv_grab_na_dd' ],
-       prereqs => { 'SOAP::Lite' => 0 } },
+       exes     => [ 'grab/na_dd/tv_grab_na_dd' ],
+       pl_files => { 'grab/na_dd/tv_grab_na_dd.PL' => 'grab/na_dd/tv_grab_na_dd' },
+       deps     => [ 'grab/na_dd/tv_grab_na_dd' => [ 'grab/na_dd/tv_grab_na_dd.IN' ] ],
+       to_clean => [ 'grab/na_dd/tv_grab_na_dd' ],
+       prereqs => { 'SOAP::Lite' => 0 },
+       grab_need_share => [ 'na_dd' ],
+     },
+
+     { name     => 'tv_grab_na_icons',
+       blurb    => 'Grabber for North American Channel Icons',
+       exes     => [ 'grab/na_icons/tv_grab_na_icons' ],
+       deps     => [ 'grab/na_icons/tv_grab_na_icons' => [ 'grab/na_icons/tv_grab_na_icons.IN' ] ],
+       pl_files => { 'grab/na_icons/tv_grab_na_icons.PL' => 'grab/na_icons/tv_grab_na_icons' },
+       to_clean => [ 'grab/na_icons/tv_grab_na_icons' ],
+       prereqs  => { 'HTML::TableExtract' => 0,
+                    'WWW::Mechanize' => 1.02 },
+       grab_need_share => [ 'na_icons' ],
+     },
 
      { name => 'tv_grab_nz',
        blurb => 'Grabber for New Zealand',
@@ -340,6 +359,19 @@ my @opt_components
 		    'HTML::TreeBuilder' => 0 },
      },
 
+     { name => 'tv_grab_no',
+       blurb => 'Grabber for Norway',
+       exes => [ 'grab/no/tv_grab_no' ],
+       prereqs => { 'HTML::Entities' => 1.27,
+		    'HTML::TableExtract' => 0,
+		    'HTML::LinkExtractor' => 0 },
+     },
+
+     { name => 'tv_grab_pt',
+       blurb => 'Grabber for Portugal',
+       exes => [ 'grab/pt/tv_grab_pt' ],
+       prereqs => { 'HTML::TreeBuilder' => 0 } },
+
      { name => 'tv_check',
        blurb => 'Program to report exceptions and changes in a schedule',
        exes => [ 'choose/tv_check/tv_check' ],
@@ -400,8 +432,9 @@ foreach my $info (@opt_components) {
     }
 }
 
-# Generate a default configuration that installs as much as possible.
-print STDERR <<END
+if (not defined $opt_components) {
+    # Generate a default configuration that installs as much as possible.
+    print STDERR <<END
 
 Choose which optional components of xmltv you want to install.  The
 XMLTV.pm library and the filter programs such as tv_grep and tv_sort
@@ -409,60 +442,74 @@ are installed by default; here you choose grabbers for different
 countries and front-ends for managing listings.
 
 END
-  ;
+      ;
 
-my $width = 0;
-foreach my $info (@opt_components) {
-    my $w = length("$info->{blurb} ($info->{name})");
-    $width = $w if $w > $width;
-}
-foreach my $info (@opt_components) {
-    my $missing = $info->{missing};
-    my $s = "$info->{blurb} ($info->{name})";
-
-    # Guess a default value for {install} based on whether
-    # prerequisites were found.
-    #
-    $info->{install} = $opt_yes || not $info->{missing};
-
-    print STDERR ($s, ' ' x (1 + $width - length $s),
-		  $info->{install} ? '[yes]' : '[no]',
-		  "\n");
-}
-print STDERR "\n";
-if (not ask('Do you want to proceed with this configuration?', 1)) {
-    # Need to set {install} for each component by prompting.
+    my $width = 0;
+    foreach my $info (@opt_components) {
+	my $w = length("$info->{blurb} ($info->{name})");
+	$width = $w if $w > $width;
+    }
     foreach my $info (@opt_components) {
 	my $missing = $info->{missing};
-	my $name = $info->{name};
-	print STDERR "\n* $info->{blurb} ($name)\n\n";
-	if ($missing) {
-	    print STDERR "These dependencies are missing for $name:\n\n";
-	    foreach (sort keys %$missing) {
-		print STDERR "$_";
-		my $min_ver = $missing->{$_};
-		if ($min_ver) {
-		    print STDERR " (version $min_ver or higher)";
+	my $s = "$info->{blurb} ($info->{name})";
+
+	# Guess a default value for {install} based on whether
+	# prerequisites were found.
+	#
+	$info->{install} = $opt_yes || not $info->{missing};
+
+	print STDERR ($s, ' ' x (1 + $width - length $s),
+		      $info->{install} ? '[yes]' : '[no]',
+		      "\n");
+    }
+    print STDERR "\n";
+    if (not ask('Do you want to proceed with this configuration?', 1)) {
+	# Need to set {install} for each component by prompting.
+	foreach my $info (@opt_components) {
+	    my $missing = $info->{missing};
+	    my $name = $info->{name};
+	    print STDERR "\n* $info->{blurb} ($name)\n\n";
+	    if ($missing) {
+		print STDERR "These dependencies are missing for $name:\n\n";
+		foreach (sort keys %$missing) {
+		    print STDERR "$_";
+		    my $min_ver = $missing->{$_};
+		    if ($min_ver) {
+			print STDERR " (version $min_ver or higher)";
+		    }
+		    print STDERR "\n";
 		}
 		print STDERR "\n";
 	    }
-	    print STDERR "\n";
-	}
 
-	my $msg;
-	my $type = $info->{type};
-	if (not defined $type or $type eq 'install') {
-	    $msg = "Do you wish to install $name?";
-	}
-	elsif ($type eq 'run') {
-	    $msg = "Do you plan to run $name?";
-	}
-	else { die }
+	    my $msg;
+	    my $type = $info->{type};
+	    if (not defined $type or $type eq 'install') {
+		$msg = "Do you wish to install $name?";
+	    } elsif ($type eq 'run') {
+		$msg = "Do you plan to run $name?";
+	    } else {
+		die;
+	    }
 	
-	$info->{install} =
-	  ask($msg, not $missing);
+	    $info->{install} =
+	      ask($msg, not $missing);
+	}
     }
 }
+else {
+    my @to_install = split /\s+/, $opt_components;
+    my %by_name;
+    foreach (@opt_components) {
+	$by_name{$_->{name}} = $_;
+	$_->{install} = 0; # default if not mentioned
+    }
+    foreach (@to_install) {
+	my $i = $by_name{$_};
+	die "unknown component $_\n" if not $i;
+	$i->{install} = 1;
+    }
+}	
 
 foreach my $info (@opt_components) {
     next if not $info->{install};
@@ -582,7 +629,7 @@ foreach my $p ((sort keys %prereqs), (sort keys %recommended)) {
     else { die }
 }
 if ($err and not $opt_nodeps) {
-    die "Required modules missing, not writing Makefile\n";
+    warn "Required modules missing, 'make' is unlikely to work\n";
 }
 
 WriteMakefile
@@ -864,7 +911,7 @@ sub MY::makefile {
 sub MY::manifypods {
     package MY;
     for (my $inherited = shift->SUPER::manifypods(@_)) {
-	foreach my $s (qw(Grab_XML Europe_TZ Config_file Get_nice Mode Summarize Gunzip Date)) {
+	foreach my $s (qw(Grab_XML DST Config_file Get_nice Mode Summarize Gunzip Date)) {
 	    s!\$\(INST_MAN3DIR\)/(?:grab::|)$s[.]\$\(MAN3EXT\)!"\$(INST_MAN3DIR)/XMLTV::$s.\$(MAN3EXT)"!;
 	    s!\$\(INSTALLMAN3DIR\)/$s.\$\(MAN3EXT\)!"\$(INSTALLMAN3DIR)/XMLTV::$s.\$(MAN3EXT)"!;
 	}

@@ -1,6 +1,6 @@
 #!perl -w
 #
-# $Id: exe_wrap.pl,v 1.33 2004/03/21 14:51:33 epaepa Exp $
+# $Id: exe_wrap.pl,v 1.44 2004/05/08 10:17:13 epaepa Exp $
 # This is a quick XMLTV shell routing to use with the windows exe
 #
 # A single EXE is needed to allow sharing of modules and dlls of all the
@@ -60,23 +60,20 @@ print STDERR "Timezone is $ENV{TZ}\n";
 $cmd = shift || "";
 
 # --version (and abbreviations thereof)
-my $VERSION = '0.5.31';
+my $VERSION = '0.5.33';
 if (index('--version', $cmd) == 0 and length $cmd >= 3) {
     print "xmltv $VERSION\n";
     exit;
 }
 
 #
-# check for tv_grab_nz
+# some grabbers aren't included
 #
-if ($cmd eq 'tv_grab_nz') {
+if ($cmd =~ /^tv_grab_(?:nz|jp|se)$/) {
     die <<END
-Sorry, tv_grab_nz is not available in this Windows binary release,
-although if you have Python installed you will be able to get it from
-the xmltv source distribution.
+Sorry, $cmd is not available in this Windows binary release, although
+it is included in xmltv source releases.
 
-It is hoped that future Windows binaries for xmltv will include a way
-to run tv_grab_nz.
 END
   ;
 };
@@ -87,6 +84,8 @@ END
 if ($cmd eq 'tv_grab_uk_rt'
  or $cmd eq 'tv_grab_it'
  or $cmd eq 'tv_grab_nl'
+ or $cmd eq 'tv_grab_na_dd',
+ or $cmd eq 'tv_grab_na_icons',
  or $cmd eq 'tv_grab_de_tvtoday'
  )
 {
@@ -122,8 +121,9 @@ foreach my $exe (split(/ /,$files))
 # execute our command
 #
     $0 = $_;        # set $0 to our script
-    $r = require $exe;
-    exit $r;
+    do $exe;
+    print STDERR $@ if length($@);
+    exit 0;
 }
 
 #

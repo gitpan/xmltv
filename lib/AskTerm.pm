@@ -2,7 +2,7 @@
 # and also by Makefile.PL, so this file should not depend on any
 # nonstandard libraries.
 #
-# $Id: AskTerm.pm,v 1.7 2004/01/24 23:43:38 epaepa Exp $
+# $Id: AskTerm.pm,v 1.10 2004/04/04 08:31:11 epaepa Exp $
 #
 package XMLTV::AskTerm;
 use strict;
@@ -85,6 +85,12 @@ sub askQuestion( $$@ )
     croak "default $default not in options"
       if not grep { $_ eq $default } @options;
 
+    # If there is only one option, don't bother asking.
+    if (@options == 1) {
+	say("$question - assuming $default");
+	return $default;
+    }
+
     # Check no duplicates (required for later processing, maybe).
     my %seen;
     foreach (@options) { die "duplicate option $_" if $seen{$_}++ }
@@ -140,9 +146,9 @@ sub askQuestion( $$@ )
 	    # numbers or the option names.
 	    #
 	    print STDERR "$_: $options[$_]\n" foreach 0 .. $#options;
-	    my $res = ask('choose one: ');
+	    my $res = ask("choose one (default=$choice_to_num{$default},$default): ");
 	    return undef if not defined $res;
-	    # No default.
+	    return $default if $res eq '';
 
 	    foreach (0 .. $#options) {
 		return $num_to_choice{$_} if $res eq $_;

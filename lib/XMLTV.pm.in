@@ -1,5 +1,5 @@
 # -*- perl -*-
-# $Id: XMLTV.pm.in,v 1.98 2004/03/21 14:51:33 epaepa Exp $
+# $Id: XMLTV.pm.in,v 1.104 2004/05/08 10:17:12 epaepa Exp $
 package XMLTV;
 
 use strict;
@@ -12,7 +12,7 @@ our @EXPORT_OK = qw(read_data parse parsefile write_data
 # the xmltv package as a whole.  This number should be checked by the
 # mkdist tool.
 #
-our $VERSION = '0.5.31';
+our $VERSION = '0.5.33';
 
 # Work around changing behaviour of XML::Twig.  On some systems (like
 # mine) it always returns UTF-8 data unless KeepEncoding is specified.
@@ -177,7 +177,7 @@ our @Programme_Handlers =
    [ 'icon',             'icon',               '*' ],
    [ 'url',              'scalar',             '*' ],
    [ 'country',          'with-lang',          '*' ],
-   [ 'episode-num',      'episode-num',        '?' ],
+   [ 'episode-num',      'episode-num',        '*' ],
    [ 'video',            'video',              '?' ],
    [ 'audio',            'audio',              '?' ],
    [ 'previously-shown', 'previously-shown',   '?' ],
@@ -1719,6 +1719,12 @@ sub write_with_lang( $$$$$ ) {
 	return;
     }
 
+    my $old_text = $text;
+    $text =~ s/^\s+//
+      && warn "stripping leading whitespace from value '$old_text' for $e";
+    $text =~ s/\s+$//
+      && warn "stripping trailing whitespace from value '$old_text' for $e";
+
     if (not length $text) {
 	if (not $allow_empty) {
 	    warn "not writing empty content for $e";
@@ -2197,6 +2203,10 @@ Write details for a single programme as XML.
 sub write_programme {
     my $self = shift;
     die 'usage: XMLTV::Writer->write_programme(programme hash)' if @_ != 1;
+    my $ref = shift;
+    croak 'write_programme() expects programme hashref'
+      if ref $ref ne 'HASH';
+    t('write_programme(' . d($self) . ', ' . d($ref) . ') ENTRY');
 
     for ($self->{xmltv_writer_state}) {
 	if ($_ eq 'new') {
@@ -2218,9 +2228,7 @@ sub write_programme {
     # as they are dealt with; then we can easily spot any unhandled
     # elements at the end.
     #
-    my %p = %{shift()};
-
-    t('write_programme(' . d($self) . ', ' . d(\%p) . ') ENTRY');
+    my %p = %$ref;
 
     # First deal with those hash keys that refer to metadata on when
     # the programme is broadcast.  After taking those out of the hash,
